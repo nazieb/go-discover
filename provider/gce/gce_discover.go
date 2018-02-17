@@ -49,6 +49,8 @@ func (p *Provider) Addrs(args map[string]string, l *log.Logger) ([]string, error
 	zone := args["zone_pattern"]
 	creds := args["credentials_file"]
 	tagValue := args["tag_value"]
+	labelName := args["label_name"]
+	labelValue := args["label_value"]
 
 	// determine the project name
 	if project == "" {
@@ -89,7 +91,7 @@ func (p *Provider) Addrs(args map[string]string, l *log.Logger) ([]string, error
 	// lookup the instance addresses
 	var addrs []string
 	for _, zone := range zones {
-		a, err := lookupAddrs(svc, project, zone, tagValue)
+		a, err := lookupAddrs(svc, project, zone, tagValue, labelName, labelValue)
 		if err != nil {
 			return nil, fmt.Errorf("discover-gce: %s", err)
 		}
@@ -166,17 +168,29 @@ func lookupZones(svc *compute.Service, project, pattern string) ([]string, error
 
 // lookupAddrs retrieves the private ip addresses of all instances in a given
 // project and zone which have a matching tag value.
-func lookupAddrs(svc *compute.Service, project, zone, tag string) ([]string, error) {
+func lookupAddrs(svc *compute.Service, project, zone, tag, labelName, labelValue string) ([]string, error) {
 	var addrs []string
 	f := func(page *compute.InstanceList) error {
 		for _, v := range page.Items {
 			if len(v.NetworkInterfaces) == 0 || v.NetworkInterfaces[0].NetworkIP == "" {
 				continue
 			}
-			for _, t := range v.Tags.Items {
-				if t == tag {
-					addrs = append(addrs, v.NetworkInterfaces[0].NetworkIP)
-					break
+
+			if tag != "" {
+				for _, t := range v.Tags.Items {
+					if t == tag {
+						addrs = append(addrs, v.NetworkInterfaces[0].NetworkIP)
+						break
+					}
+				}
+			}
+
+			if labelName != "" && labelValue != "" {
+				for key, val := range v.Labels {
+					if key == labelName && val == labelValue {
+						addrs = append(addrs, v.NetworkInterfaces[0].NetworkIP)
+						break
+					}
 				}
 			}
 		}
